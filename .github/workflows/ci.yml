@@ -183,13 +183,52 @@ jobs:
       - name: "Upload Artifact"
         uses: actions/upload-artifact@v7
         with:
-          path: acli
+          path: native-acli-${{ matrix.platform }}.tar.gz
           name: native-acli-${{ matrix.platform }}
       -  name: Release
          uses: softprops/action-gh-release@v3
          if: startsWith(github.ref, 'refs/tags/')
          with:
            files: native-acli-${{ matrix.platform }}.tar.gz
+
+  build-checksums:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    needs:
+      - build-release
+      - build-native
+    steps:
+      - name: Download PHAR artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: acli.phar
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: native-acli-linux-x86_64
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: native-acli-macos-aarch64
+      - name: Generate SHA256SUMS
+        run: |
+          sha256sum \
+            acli.phar \
+            native-acli-linux-x86_64.tar.gz \
+            native-acli-macos-aarch64.tar.gz \
+            > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Store checksum manifest in Actions
+        uses: actions/upload-artifact@v7
+        with:
+          name: SHA256SUMS
+          path: SHA256SUMS
+      - name: Add checksum manifest to release
+        uses: softprops/action-gh-release@v3
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: SHA256SUMS
 
   # Require all checks to pass without having to enumerate them in the branch protection UI.
   # @see https://github.community/t/is-it-possible-to-require-all-github-actions-tasks-to-pass-without-enumerating-them/117957
@@ -199,6 +238,7 @@ jobs:
     - test
     - build-release
     - build-native
+    - build-checksums
     runs-on: ubuntu-24.04
     steps:
     - name: Decide whether the needed jobs succeeded or failed
